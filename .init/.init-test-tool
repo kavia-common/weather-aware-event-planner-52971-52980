@@ -1,0 +1,4 @@
+{
+    "command": "npm run test",
+    "working_directory": "/home/kavia/workspace/code-generation/weather-aware-event-planner-52971-52980/event_planner_frontend"
+}
