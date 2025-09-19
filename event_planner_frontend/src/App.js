@@ -71,6 +71,8 @@ function App() {
 
   // Location selector state
   const [locations, setLocations] = useState([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
+  const [locationsError, setLocationsError] = useState('');
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const selectedLocation = useMemo(
     () => locations.find(l => String(l.id) === String(selectedLocationId)),
@@ -105,20 +107,37 @@ function App() {
   useEffect(() => {
     let active = true;
     (async () => {
+      setLocationsLoading(true);
+      setLocationsError('');
       try {
         const [locs, evs] = await Promise.all([
-          apiGet('/api/locations/', { page: 1, per_page: 100 }).catch(() => []),
-          apiGet('/api/events/', { page: 1, per_page: 100 }).catch(() => [])
+          apiGet('/api/locations/', { page: 1, per_page: 100 }),
+          apiGet('/api/events/', { page: 1, per_page: 100 })
         ]);
         if (!active) return;
-        setLocations(Array.isArray(locs) ? locs : []);
+
+        const locArray = Array.isArray(locs) ? locs : [];
+        setLocations(locArray);
         setEvents(Array.isArray(evs) ? evs : []);
-        if (Array.isArray(locs) && locs.length > 0) {
-          setSelectedLocationId(String(locs[0].id));
-          setForm((f) => ({ ...f, locationId: String(locs[0].id) }));
+
+        // Pick the first location if available
+        if (locArray.length > 0) {
+          const firstId = String(locArray[0].id);
+          setSelectedLocationId(firstId);
+          setForm((f) => ({ ...f, locationId: firstId }));
+        }
+        if (!Array.isArray(locs)) {
+          setLocationsError('Unexpected response for locations. Expected an array.');
+        } else if (locArray.length === 0) {
+          setLocationsError('No locations available from the server.');
         }
       } catch (e) {
-        setError(String(e.message || e));
+        const msg = String(e?.message || e);
+        setLocationsError(`Failed to load locations: ${msg}`);
+        setError(msg);
+        setLocations([]);
+      } finally {
+        setLocationsLoading(false);
       }
     })();
     return () => { active = false; };
@@ -245,14 +264,36 @@ function App() {
           <select
             aria-label="Select location"
             value={selectedLocationId}
-            onChange={(e) => { setSelectedLocationId(e.target.value); setForm(f => ({ ...f, locationId: e.target.value })); }}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedLocationId(val);
+              setForm(f => ({ ...f, locationId: val }));
+            }}
             style={styles.locationSelect}
           >
-            {locations.map(l => (
-              <option key={l.id} value={String(l.id)}>
-                {l.name || `${l.city || 'Unknown'}, ${l.state || ''}`.trim()}
+            {/* Placeholder and status options */}
+            {locationsLoading && (
+              <option value="" disabled>Loading locations…</option>
+            )}
+            {!locationsLoading && locations.length === 0 && (
+              <option value="" disabled>
+                {locationsError ? 'No locations (API error)' : 'No locations available'}
               </option>
-            ))}
+            )}
+            {!locationsLoading && locations.length > 0 && (
+              <option value="" disabled>Select a location…</option>
+            )}
+            {/* Actual options */}
+            {locations.map(l => {
+              const label = l.name
+                || [l.city, l.state, l.country].filter(Boolean).join(', ')
+                || `Location #${l.id}`;
+              return (
+                <option key={l.id} value={String(l.id)}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
           <button style={styles.themeToggle} onClick={toggleTheme} aria-label="Toggle theme">
             {theme === 'light' ? '🌙' : '☀️'}
@@ -584,7 +625,7 @@ function BookingForm({ form, onChange, onSubmit, submitting, selectedLocation })
             value={selectedLocation ? (selectedLocation.name || selectedLocation.city || 'Selected') : ''}
             style={{ ...styles.input, background: '#f3f4f6' }}
             readOnly
-            placeholder="Select from top-right"
+            placeholder="Pick a location from the top-right dropdown"
           />
         </div>
       </div>
